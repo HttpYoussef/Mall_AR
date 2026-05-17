@@ -1,5 +1,4 @@
 package com.example.mallar.ui.screens
-
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mallar.data.AStarPath
@@ -17,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+
 class UnifiedNavigationViewModel : ViewModel() {
 
     init {
@@ -33,6 +33,13 @@ class UnifiedNavigationViewModel : ViewModel() {
 
     private val _poseEnabled = MutableStateFlow(false)
     val poseEnabled: StateFlow<Boolean> = _poseEnabled.asStateFlow()
+    private val _pendingPath = MutableStateFlow<AStarPath?>(null)
+    val pendingPath: StateFlow<AStarPath?> = _pendingPath.asStateFlow()
+
+    private val _pendingDestination = MutableStateFlow<String?>(null)
+    val pendingDestination: StateFlow<String?> = _pendingDestination.asStateFlow()
+
+    private var pendingNodes: List<GraphNode>? = null
 
     companion object {
         private const val POSE_GRACE_MS = 1500L
@@ -122,6 +129,7 @@ class UnifiedNavigationViewModel : ViewModel() {
      * Recompute A* from the user's current path segment to a new store (voice mid-trip).
      */
     fun navigateToNewDestination(shopQuery: String): AStarPath? {
+
         val graph = MallGraphRepository.loadedGraph ?: return null
         val resolved = LocalIntentParser.fuzzyMatchShop(shopQuery, graph)
             ?: shopQuery.trim().takeIf { it.isNotEmpty() }
@@ -140,8 +148,27 @@ class UnifiedNavigationViewModel : ViewModel() {
         if (newNodes.size < 2) return null
 
         val destLabel = destNode.shopName ?: shopQuery
-        sessionManager.initialize(newNodes, destLabel)
+
+        pendingNodes = newNodes
+        _pendingPath.value = newPath
+        _pendingDestination.value = destLabel
+
         return newPath
+    }
+    fun confirmAndStartNavigation() {
+        val nodes = pendingNodes ?: return
+        val destination = _pendingDestination.value ?: return
+
+        sessionManager.initialize(nodes, destination)
+
+        _pendingPath.value = null
+        _pendingDestination.value = null
+        pendingNodes = null
+    }
+    fun cancelRoutePreview() {
+        _pendingPath.value = null
+        _pendingDestination.value = null
+        pendingNodes = null
     }
 
     /** Voice: explicit start store → end store (e.g. from Zara to Bershka). */
